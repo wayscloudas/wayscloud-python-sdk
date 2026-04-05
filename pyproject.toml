@@ -1,6 +1,6 @@
 [project]
 name = "wayscloud"
-version = "0.1.0"
+version = "0.2.1"
 description = "Official Python SDK for the WAYSCloud API"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,8 +19,8 @@ classifiers = [
 [project.urls]
 Homepage = "https://wayscloud.services"
 Documentation = "https://docs.wayscloud.services/integrations/sdk"
-Repository = "https://github.com/wayscloudas/wayscloud-python-sdk"
-Issues = "https://github.com/wayscloudas/wayscloud-python-sdk/issues"
+Repository = "https://github.com/wayscloudas/wayscloud-provision-api"
+Issues = "https://github.com/wayscloudas/wayscloud-provision-api/issues"
 
 [tool.setuptools.packages.find]
 include = ["wayscloud*"]

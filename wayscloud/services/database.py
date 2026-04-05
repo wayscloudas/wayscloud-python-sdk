@@ -6,15 +6,18 @@ from typing import Optional
 
 
 class DatabaseService:
-    """Manage PostgreSQL and MariaDB databases."""
+    """Manage PostgreSQL and MariaDB databases.
+
+    All methods use the public API at /v1/databases (PAT auth).
+    """
 
     def __init__(self, client):
         self._client = client
 
     def list(self) -> list[dict]:
         """List all databases."""
-        data = self._client.get("/api/v1/dashboard/databases")
-        return data.get("databases", data) if isinstance(data, dict) else data
+        data = self._client.get("/v1/databases")
+        return data if isinstance(data, list) else data.get("databases", [])
 
     def get(self, db_type: str, name: str) -> dict:
         """Get details of a specific database.
@@ -23,7 +26,7 @@ class DatabaseService:
             db_type: Database type (postgresql or mariadb).
             name: Database name.
         """
-        return self._client.get(f"/api/v1/dashboard/databases/{db_type}/{name}")
+        return self._client.get(f"/v1/databases/{db_type}/{name}")
 
     def create(
         self,
@@ -32,7 +35,7 @@ class DatabaseService:
         tier: str = "standard",
         description: Optional[str] = None,
     ) -> dict:
-        """Create a new database.
+        """Create a new database. Returns credentials on success.
 
         Args:
             name: Database name.
@@ -43,27 +46,30 @@ class DatabaseService:
         body: dict = {"name": name, "type": db_type, "tier": tier}
         if description is not None:
             body["description"] = description
-        return self._client.post("/api/v1/dashboard/databases", json=body)
+        return self._client.post("/v1/databases", json=body)
 
     def delete(self, db_type: str, name: str) -> dict:
-        """Delete a database (permanent).
+        """Delete a database (permanent)."""
+        return self._client.delete(f"/v1/databases/{db_type}/{name}")
 
-        Args:
-            db_type: Database type (postgresql or mariadb).
-            name: Database name.
-        """
-        return self._client.delete(f"/api/v1/dashboard/databases/{db_type}/{name}")
+    # ── Firewall ─────────────────────────────────────────────────
 
-    def credentials(self, db_type: str, name: str) -> dict:
-        """Get connection credentials for a database.
+    def firewall_rules(self, db_type: str, name: str) -> list[dict]:
+        """List firewall rules for a database."""
+        data = self._client.get(f"/v1/databases/{db_type}/{name}/firewall")
+        return data if isinstance(data, list) else data.get("rules", [])
 
-        Returns host, port, username, password, database name, and connection string.
-        """
-        return self._client.get(
-            f"/api/v1/dashboard/databases/{db_type}/{name}/credentials"
+    def add_firewall_rule(self, db_type: str, name: str, source: str) -> dict:
+        """Add a firewall rule to allow access from a CIDR."""
+        return self._client.post(
+            f"/v1/databases/{db_type}/{name}/firewall",
+            json={"source": source},
         )
 
-    def tiers(self) -> list[dict]:
-        """List available database tiers."""
-        data = self._client.get("/api/v1/dashboard/databases/tiers")
-        return data.get("tiers", data) if isinstance(data, dict) else data
+    def remove_firewall_rule(self, db_type: str, name: str, rule_id: str) -> dict:
+        """Remove a firewall rule."""
+        return self._client.delete(f"/v1/databases/{db_type}/{name}/firewall/{rule_id}")
+
+    # credentials() removed — no public /v1/databases/.../credentials endpoint.
+    # Connection credentials are returned in create() response.
+    # tiers() removed — no public endpoint. Dashboard-only discovery.

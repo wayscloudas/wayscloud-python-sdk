@@ -15,7 +15,10 @@ import httpx
 from ._version import __version__
 from .exceptions import (
     AuthenticationError,
+    ConflictError,
     NotFoundError,
+    NotImplementedError_,
+    RateLimitError,
     ServerError,
     ValidationError,
     WaysCloudError,
@@ -75,7 +78,7 @@ class WaysCloudClient:
             self._headers["X-API-Key"] = api_key
 
         # Persistent HTTP client for connection pooling
-        self._http = httpx.Client(timeout=self.timeout)
+        self._http = httpx.Client(timeout=self.timeout, follow_redirects=True)
 
         # Lazy service instances
         self._vps: Optional[Any] = None
@@ -201,8 +204,14 @@ class WaysCloudClient:
             raise AuthenticationError(message=message, status_code=status, detail=detail)
         elif status == 404:
             raise NotFoundError(message=message, status_code=status, detail=detail)
-        elif status == 422:
+        elif status in (400, 422):
             raise ValidationError(message=message, status_code=status, detail=detail)
+        elif status == 409:
+            raise ConflictError(message=message, status_code=status, detail=detail)
+        elif status == 429:
+            raise RateLimitError(message=message, status_code=status, detail=detail)
+        elif status == 501:
+            raise NotImplementedError_(message=message, status_code=status, detail=detail)
         elif status >= 500:
             raise ServerError(message=message, status_code=status, detail=detail)
         else:

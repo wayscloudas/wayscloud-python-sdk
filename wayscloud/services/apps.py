@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 
 class AppService:
-    """Manage container apps on the WAYSCloud App Platform."""
+    """Manage container apps on the WAYSCloud App Platform.
+
+    All methods use the public API at /v1/apps (API key auth).
+    """
 
     def __init__(self, client):
         self._client = client
 
     def list(self) -> list[dict]:
         """List all apps."""
-        data = self._client.get("/api/v1/dashboard/apps")
+        data = self._client.get("/v1/apps")
         return data.get("apps", data) if isinstance(data, dict) else data
 
     def get(self, app_id: str) -> dict:
         """Get details of a specific app."""
-        return self._client.get(f"/api/v1/dashboard/apps/{app_id}")
+        return self._client.get(f"/v1/apps/{app_id}")
 
     def create(
         self,
@@ -27,58 +30,43 @@ class AppService:
         region: str = "no",
         port: int = 8080,
     ) -> dict:
-        """Create a new app.
-
-        Args:
-            name: App name.
-            plan: Plan code (default: app-basic).
-            region: Region code (default: no).
-            port: Application port (default: 8080).
-        """
+        """Create a new app."""
         return self._client.post(
-            "/api/v1/dashboard/apps",
+            "/v1/apps",
             json={"name": name, "plan": plan, "region": region, "port": port},
         )
 
     def update(self, app_id: str, **kwargs) -> dict:
-        """Update an app. Pass any updatable fields as kwargs.
-
-        Common fields: env_vars (dict), plan, port, etc.
-        """
-        return self._client.patch(f"/api/v1/dashboard/apps/{app_id}", json=kwargs)
+        """Update an app. Pass any updatable fields as kwargs."""
+        return self._client.patch(f"/v1/apps/{app_id}", json=kwargs)
 
     def delete(self, app_id: str) -> dict:
         """Delete an app (permanent)."""
-        return self._client.delete(f"/api/v1/dashboard/apps/{app_id}")
+        return self._client.delete(f"/v1/apps/{app_id}")
 
     def deploy(self, app_id: str, image: str) -> dict:
         """Deploy an app from a container image URI."""
         return self._client.post(
-            f"/api/v1/dashboard/apps/{app_id}/deploy/image",
+            f"/v1/apps/{app_id}/deploy/image",
             json={"image_uri": image},
         )
 
     def start(self, app_id: str) -> dict:
         """Start an app."""
-        return self._client.post(f"/api/v1/dashboard/apps/{app_id}/start")
+        return self._client.post(f"/v1/apps/{app_id}/start")
 
     def stop(self, app_id: str) -> dict:
         """Stop an app."""
-        return self._client.post(f"/api/v1/dashboard/apps/{app_id}/stop")
+        return self._client.post(f"/v1/apps/{app_id}/stop")
 
     def restart(self, app_id: str) -> dict:
         """Restart an app."""
-        return self._client.post(f"/api/v1/dashboard/apps/{app_id}/restart")
+        return self._client.post(f"/v1/apps/{app_id}/restart")
 
     def logs(self, app_id: str, lines: int = 100) -> list:
-        """Get app logs.
-
-        Args:
-            app_id: App ID.
-            lines: Number of log lines to retrieve (default: 100).
-        """
+        """Get app logs."""
         data = self._client.get(
-            f"/api/v1/dashboard/apps/{app_id}/logs",
+            f"/v1/apps/{app_id}/logs",
             params={"lines": lines},
         )
         if isinstance(data, dict):
@@ -87,46 +75,30 @@ class AppService:
 
     def plans(self) -> list[dict]:
         """List available app plans."""
-        data = self._client.get("/api/v1/dashboard/apps/plans")
+        data = self._client.get("/v1/apps/plans")
         return data if isinstance(data, list) else data.get("plans", [])
 
+    def regions(self) -> list[dict]:
+        """List available app regions."""
+        data = self._client.get("/v1/apps/regions")
+        return data if isinstance(data, list) else data.get("regions", [])
+
     # ── Environment variables ─────────────────────────────────────
+    # env_vars are part of the app detail and updated via PATCH
 
     def env_vars(self, app_id: str) -> dict:
-        """Get environment variables for an app."""
-        data = self._client.get(f"/api/v1/dashboard/apps/{app_id}")
+        """Get environment variables for an app (from app detail)."""
+        data = self.get(app_id)
         return data.get("env_vars", {}) if isinstance(data, dict) else {}
 
     def set_env(self, app_id: str, key: str, value: str) -> dict:
         """Set an environment variable on an app."""
-        return self._client.patch(
-            f"/api/v1/dashboard/apps/{app_id}",
-            json={"env_vars": {key: value}},
-        )
+        return self.update(app_id, env_vars={key: value})
 
     def unset_env(self, app_id: str, key: str) -> dict:
         """Remove an environment variable from an app."""
-        return self._client.patch(
-            f"/api/v1/dashboard/apps/{app_id}",
-            json={"env_vars": {key: None}},
-        )
+        return self.update(app_id, env_vars={key: None})
 
-    # ── Custom domains ────────────────────────────────────────────
-
-    def domains(self, app_id: str) -> list[dict]:
-        """List custom domains for an app."""
-        data = self._client.get(f"/api/v1/dashboard/apps/{app_id}/domains")
-        return data.get("domains", data) if isinstance(data, dict) else data
-
-    def add_domain(self, app_id: str, domain: str) -> dict:
-        """Add a custom domain to an app."""
-        return self._client.post(
-            f"/api/v1/dashboard/apps/{app_id}/domains",
-            json={"domain": domain},
-        )
-
-    def remove_domain(self, app_id: str, domain_id: str) -> dict:
-        """Remove a custom domain from an app."""
-        return self._client.delete(
-            f"/api/v1/dashboard/apps/{app_id}/domains/{domain_id}"
-        )
+    # domains(), add_domain(), remove_domain() removed.
+    # No public /v1/apps/{id}/domains endpoint exists (404 verified).
+    # Domain management is dashboard-only.

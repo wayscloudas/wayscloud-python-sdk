@@ -6,38 +6,47 @@ from typing import Optional
 
 
 class DNSService:
-    """Manage DNS zones, records, and DNSSEC."""
+    """Manage DNS zones, records, and DNSSEC.
+
+    All methods use the public API at /v1/dns (API key auth).
+    """
 
     def __init__(self, client):
         self._client = client
 
     # ── Zones ─────────────────────────────────────────────────────
 
-    def zones(self) -> list[dict]:
+    def list(self) -> list[dict]:
         """List all DNS zones."""
-        data = self._client.get("/api/v1/dashboard/dns/zones")
+        data = self._client.get("/v1/dns/zones")
         return data.get("zones", data) if isinstance(data, dict) else data
 
-    def get_zone(self, zone_name: str) -> dict:
+    # Alias for backward compatibility
+    zones = list
+
+    def get(self, zone_name: str) -> dict:
         """Get details of a specific DNS zone."""
-        return self._client.get(f"/api/v1/dashboard/dns/zones/{zone_name}")
+        return self._client.get(f"/v1/dns/zones/{zone_name}")
+
+    # Alias
+    get_zone = get
 
     def create_zone(self, name: str, zone_type: str = "master") -> dict:
         """Create a new DNS zone."""
         return self._client.post(
-            "/api/v1/dashboard/dns/zones",
+            "/v1/dns/zones",
             json={"zone_name": name, "zone_type": zone_type},
         )
 
     def delete_zone(self, zone_name: str) -> dict:
         """Delete a DNS zone and all its records (permanent)."""
-        return self._client.delete(f"/api/v1/dashboard/dns/zones/{zone_name}")
+        return self._client.delete(f"/v1/dns/zones/{zone_name}")
 
     # ── Records ───────────────────────────────────────────────────
 
     def records(self, zone_name: str) -> list[dict]:
         """List all records in a DNS zone."""
-        data = self._client.get(f"/api/v1/dashboard/dns/zones/{zone_name}/records")
+        data = self._client.get(f"/v1/dns/zones/{zone_name}/records")
         return data.get("records", data) if isinstance(data, dict) else data
 
     def create_record(
@@ -58,10 +67,7 @@ class DNSService:
         }
         if priority is not None:
             body["priority"] = priority
-        return self._client.post(
-            f"/api/v1/dashboard/dns/zones/{zone_name}/records",
-            json=body,
-        )
+        return self._client.post(f"/v1/dns/zones/{zone_name}/records", json=body)
 
     def update_record(self, zone_name: str, record_id: str, **kwargs) -> dict:
         """Update a DNS record. Pass value=, ttl=, and/or priority= as kwargs."""
@@ -71,27 +77,22 @@ class DNSService:
         for key in ("ttl", "priority"):
             if key in kwargs and kwargs[key] is not None:
                 body[key] = kwargs[key]
-        return self._client.patch(
-            f"/api/v1/dashboard/dns/zones/{zone_name}/records/{record_id}",
-            json=body,
-        )
+        return self._client.put(f"/v1/dns/zones/{zone_name}/records/{record_id}", json=body)
 
     def delete_record(self, zone_name: str, record_id: str) -> dict:
         """Delete a DNS record (permanent)."""
-        return self._client.delete(
-            f"/api/v1/dashboard/dns/zones/{zone_name}/records/{record_id}"
-        )
+        return self._client.delete(f"/v1/dns/zones/{zone_name}/records/{record_id}")
 
     # ── DNSSEC ────────────────────────────────────────────────────
 
     def dnssec_status(self, zone_name: str) -> dict:
         """Get DNSSEC status for a zone."""
-        return self._client.get(f"/api/v1/dashboard/dns/zones/{zone_name}/dnssec")
+        return self._client.get(f"/v1/dns/zones/{zone_name}/dnssec")
 
     def dnssec_activate(self, zone_name: str) -> dict:
         """Activate DNSSEC for a zone."""
-        return self._client.post(f"/api/v1/dashboard/dns/zones/{zone_name}/dnssec/activate")
+        return self._client.post(f"/v1/dns/zones/{zone_name}/dnssec/activate")
 
     def dnssec_deactivate(self, zone_name: str) -> dict:
         """Deactivate DNSSEC for a zone."""
-        return self._client.post(f"/api/v1/dashboard/dns/zones/{zone_name}/dnssec/deactivate")
+        return self._client.delete(f"/v1/dns/zones/{zone_name}/dnssec")

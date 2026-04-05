@@ -19,7 +19,22 @@ class NotFoundError(WaysCloudError):
 
 
 class ValidationError(WaysCloudError):
-    """422 -- request validation failed."""
+    """400/422 -- request validation or input error."""
+    pass
+
+
+class ConflictError(WaysCloudError):
+    """409 -- state conflict (resource busy, duplicate, wrong state)."""
+    pass
+
+
+class RateLimitError(WaysCloudError):
+    """429 -- too many requests or resource limit reached."""
+    pass
+
+
+class NotImplementedError_(WaysCloudError):
+    """501 -- feature not yet available."""
     pass
 
 

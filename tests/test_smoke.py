@@ -103,8 +103,8 @@ def test_close():
 
 def test_all_services_instantiate():
     c = WaysCloudClient(token="t")
-    services = [c.vps, c.dns, c.storage, c.database, c.redis, c.apps, c.iot, c.sms, c.account]
-    assert len(services) == 9
+    services = [c.vps, c.dns, c.storage, c.database, c.redis, c.apps, c.iot, c.sms, c.account, c.regions]
+    assert len(services) == 10
     assert all(s is not None for s in services)
     # Lazy — same instance on second access
     assert c.vps is c.vps

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Optional
 
 
@@ -85,9 +86,27 @@ class VPSService:
         return data if isinstance(data, list) else data.get("templates", [])
 
     def regions(self) -> list[dict]:
-        """List available VPS regions."""
-        data = self._client.get("/v1/vps/regions")
-        return data if isinstance(data, list) else data.get("regions", [])
+        """Deprecated: use ``client.regions.list()``. This does not list VPS locations.
+
+        There is no ``/v1/vps/regions`` endpoint. Earlier versions requested
+        it, the API routed the request to ``GET /v1/vps/{vps_id}``, and the
+        call always failed. This method now returns ``client.regions.list()``:
+        the WAYSCloud regions from ``GET /v1/regions``.
+
+        That list is not where you can create a VPS. VPS locations are
+        ISO 3166-1 country codes (``NO``, ``SE``, ...), there are more of them
+        than ``/v1/regions`` lists, and ``available_services`` there never
+        includes VPS. No endpoint lists VPS locations. To see what one location
+        offers, list its plans with ``vps.plans(region="NO")``.
+        """
+        warnings.warn(
+            "VPSService.regions() is deprecated and does not list VPS locations. "
+            "Use client.regions.list() for WAYSCloud regions, or "
+            "client.vps.plans(region=...) for the plans in one VPS location.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._client.regions.list()
 
     # ── Snapshots ────────────────────────────────────────────────
 

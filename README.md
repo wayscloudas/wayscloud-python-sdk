@@ -44,14 +44,30 @@ client.dns.create_record(
 db = client.database.create(name="prod", db_type="postgresql")
 
 # Apps
-app = client.apps.create(name="my-app", region="eu")
+app = client.apps.create(name="my-app", region="no")
 
 # Storage
 client.storage.create_bucket("my-bucket")
 
 # SMS
 client.sms.send(to="+4712345678", message="Hello from WAYSCloud")
+
+# Regions and the services available in each
+for region in client.regions.list():
+    print(region["code"], region["status"], region["available_services"])
 ```
+
+## Regions
+
+Region codes are lowercase country codes such as `no`, `se` and `dk`, and the
+API accepts them in any letter case. `client.regions.list()` returns every
+region with its `status` and `available_services`. It uses the public
+`GET /v1/regions` endpoint, which needs no authentication.
+
+VPS locations are not in that list. They are ISO 3166-1 country codes (`NO`,
+`SE`, ...), there are more of them than `/v1/regions` lists, and no endpoint
+lists them. `client.vps.plans(region="NO")` shows the plans in one location.
+`client.vps.regions()` is deprecated: it never listed VPS locations.
 
 ## Error handling
 

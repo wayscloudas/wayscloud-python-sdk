@@ -90,6 +90,7 @@ class WaysCloudClient:
         self._iot: Optional[Any] = None
         self._sms: Optional[Any] = None
         self._account: Optional[Any] = None
+        self._regions: Optional[Any] = None
 
     # ── Lifecycle ─────────────────────────────────────────────────
 
@@ -310,3 +311,11 @@ class WaysCloudClient:
             from .services.account import AccountService
             self._account = AccountService(self)
         return self._account
+
+    @property
+    def regions(self):
+        """Regions service."""
+        if self._regions is None:
+            from .services.regions import RegionsService
+            self._regions = RegionsService(self)
+        return self._regions

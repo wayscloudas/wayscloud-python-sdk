@@ -1,5 +1,6 @@
 """SDK smoke tests — verify public API surface, auth, lifecycle, and error handling."""
 
+import json
 import os
 
 import httpx
@@ -115,29 +116,31 @@ def test_all_services_instantiate():
 
 @respx.mock
 def test_get_returns_json():
-    respx.get("https://api.wayscloud.services/api/v1/dashboard/vps").mock(
-        return_value=httpx.Response(200, json={"instances": []})
+    respx.get("https://api.wayscloud.services/v1/vps/").mock(
+        return_value=httpx.Response(200, json={"total": 1, "vps_instances": [{"id": "vps-1", "hostname": "web01"}]})
     )
     with WaysCloudClient(token="t") as c:
         result = c.vps.list()
-    assert result == []
+    assert result == [{"id": "vps-1", "hostname": "web01"}]
 
 
 @respx.mock
 def test_post_sends_json_body():
-    route = respx.post("https://api.wayscloud.services/api/v1/dashboard/dns/zones").mock(
-        return_value=httpx.Response(201, json={"id": "z1", "name": "example.com"})
+    route = respx.post("https://api.wayscloud.services/v1/dns/zones").mock(
+        return_value=httpx.Response(201, json={"zone_id": "z1", "zone_name": "example.com"})
     )
     with WaysCloudClient(token="t") as c:
         result = c.dns.create_zone("example.com")
-    assert result["name"] == "example.com"
-    assert route.calls[0].request.headers["content-type"] == "application/json"
+    assert result["zone_name"] == "example.com"
+    request = route.calls[0].request
+    assert request.headers["content-type"] == "application/json"
+    assert json.loads(request.content) == {"zone_name": "example.com", "zone_type": "master"}
 
 
 @respx.mock
 def test_get_does_not_send_content_type():
-    route = respx.get("https://api.wayscloud.services/api/v1/dashboard/vps").mock(
-        return_value=httpx.Response(200, json={"instances": []})
+    route = respx.get("https://api.wayscloud.services/v1/vps/").mock(
+        return_value=httpx.Response(200, json={"total": 0, "vps_instances": []})
     )
     with WaysCloudClient(token="t") as c:
         c.vps.list()
@@ -146,7 +149,7 @@ def test_get_does_not_send_content_type():
 
 @respx.mock
 def test_204_returns_ok():
-    respx.delete("https://api.wayscloud.services/api/v1/dashboard/vps/abc").mock(
+    respx.delete("https://api.wayscloud.services/v1/vps/abc").mock(
         return_value=httpx.Response(204)
     )
     with WaysCloudClient(token="t") as c:
@@ -158,7 +161,7 @@ def test_204_returns_ok():
 
 @respx.mock
 def test_401_raises_authentication_error():
-    respx.get("https://api.wayscloud.services/api/v1/dashboard/vps").mock(
+    respx.get("https://api.wayscloud.services/v1/vps/").mock(
         return_value=httpx.Response(401, json={"detail": "Invalid token"})
     )
     with WaysCloudClient(token="t") as c:
@@ -169,7 +172,7 @@ def test_401_raises_authentication_error():
 
 @respx.mock
 def test_404_raises_not_found():
-    respx.get("https://api.wayscloud.services/api/v1/dashboard/vps/bad").mock(
+    respx.get("https://api.wayscloud.services/v1/vps/bad").mock(
         return_value=httpx.Response(404, json={"detail": "Not found"})
     )
     with WaysCloudClient(token="t") as c:
@@ -179,7 +182,7 @@ def test_404_raises_not_found():
 
 @respx.mock
 def test_422_raises_validation_error():
-    respx.post("https://api.wayscloud.services/api/v1/dashboard/dns/zones").mock(
+    respx.post("https://api.wayscloud.services/v1/dns/zones").mock(
         return_value=httpx.Response(422, json={"detail": "Invalid zone name"})
     )
     with WaysCloudClient(token="t") as c:
@@ -189,7 +192,7 @@ def test_422_raises_validation_error():
 
 @respx.mock
 def test_500_raises_server_error():
-    respx.get("https://api.wayscloud.services/api/v1/dashboard/vps").mock(
+    respx.get("https://api.wayscloud.services/v1/vps/").mock(
         return_value=httpx.Response(500, json={"detail": "Internal error"})
     )
     with WaysCloudClient(token="t") as c:
@@ -201,16 +204,16 @@ def test_500_raises_server_error():
 
 @respx.mock
 def test_retries_on_429_then_succeeds():
-    route = respx.get("https://api.wayscloud.services/api/v1/dashboard/vps").mock(
+    route = respx.get("https://api.wayscloud.services/v1/vps/").mock(
         side_effect=[
             httpx.Response(429),
-            httpx.Response(200, json={"instances": [{"hostname": "ok"}]}),
+            httpx.Response(200, json={"total": 1, "vps_instances": [{"hostname": "ok"}]}),
         ]
     )
     with WaysCloudClient(token="t") as c:
         c.BACKOFF_FACTOR = 0.01  # Speed up test
         result = c.vps.list()
-    assert len(result) == 1
+    assert result == [{"hostname": "ok"}]
     assert route.call_count == 2
 
 

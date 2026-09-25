@@ -86,10 +86,12 @@ class WaysCloudClient:
         self._storage: Optional[Any] = None
         self._database: Optional[Any] = None
         self._redis: Optional[Any] = None
+        self._kubernetes: Optional[Any] = None
         self._apps: Optional[Any] = None
         self._iot: Optional[Any] = None
         self._sms: Optional[Any] = None
         self._account: Optional[Any] = None
+        self._impact: Optional[Any] = None
 
     # ── Lifecycle ─────────────────────────────────────────────────
 
@@ -111,8 +113,12 @@ class WaysCloudClient:
         path: str,
         json: Any = None,
         params: Optional[dict] = None,
+        raw: bool = False,
     ) -> Any:
         """Execute HTTP request with retry and error mapping.
+
+        ``raw=True`` returns the response body as text (e.g. a kubeconfig YAML)
+        instead of decoding JSON.
 
         Retries up to MAX_RETRIES times on 429/502/503/504 with exponential
         backoff. Maps HTTP error codes to typed exceptions.
@@ -134,8 +140,10 @@ class WaysCloudClient:
                     params=params,
                 )
 
-                # Success
-                if response.status_code in (200, 201):
+                # Success (202 = accepted, asynchronous operations such as cluster create/delete)
+                if response.status_code in (200, 201, 202):
+                    if raw:
+                        return response.text
                     try:
                         return response.json()
                     except Exception:
@@ -217,9 +225,9 @@ class WaysCloudClient:
         else:
             raise WaysCloudError(message=message, status_code=status, detail=detail)
 
-    def get(self, path: str, params: Optional[dict] = None) -> Any:
-        """Execute GET request."""
-        return self._request("GET", path, params=params)
+    def get(self, path: str, params: Optional[dict] = None, raw: bool = False) -> Any:
+        """Execute GET request. ``raw=True`` returns text instead of JSON."""
+        return self._request("GET", path, params=params, raw=raw)
 
     def post(self, path: str, json: Any = None) -> Any:
         """Execute POST request."""
@@ -233,9 +241,9 @@ class WaysCloudClient:
         """Execute PATCH request."""
         return self._request("PATCH", path, json=json)
 
-    def delete(self, path: str) -> Any:
-        """Execute DELETE request."""
-        return self._request("DELETE", path)
+    def delete(self, path: str, json: Any = None) -> Any:
+        """Execute DELETE request (optionally with a JSON body, e.g. a confirmation)."""
+        return self._request("DELETE", path, json=json)
 
     # ── Lazy service properties ───────────────────────────────────
 
@@ -280,6 +288,14 @@ class WaysCloudClient:
         return self._redis
 
     @property
+    def kubernetes(self):
+        """Managed Kubernetes clusters (/v1/kubernetes)."""
+        if self._kubernetes is None:
+            from .services.kubernetes import KubernetesService
+            self._kubernetes = KubernetesService(self)
+        return self._kubernetes
+
+    @property
     def apps(self):
         """App Platform service."""
         if self._apps is None:
@@ -310,3 +326,11 @@ class WaysCloudClient:
             from .services.account import AccountService
             self._account = AccountService(self)
         return self._account
+
+    @property
+    def impact(self):
+        """Impact Trees service — customer-funded reforestation contributions."""
+        if self._impact is None:
+            from .services.impact import ImpactService
+            self._impact = ImpactService(self)
+        return self._impact

@@ -58,6 +58,18 @@ class StorageService:
             f"/v1/storage/buckets/{bucket_name}/keys/{key_id}"
         )
 
-    # credentials() and quota() removed — no public /v1/storage equivalent.
-    # S3 credentials are returned in create_bucket_key() response.
-    # Quota is a dashboard-only feature.
+    # ── Visibility ────────────────────────────────────────────────
+
+    def set_visibility(self, bucket_name: str, is_public: bool) -> dict:
+        """Toggle bucket public/private access."""
+        return self._client.patch(
+            f"/v1/storage/buckets/{bucket_name}/visibility",
+            json={"is_public": is_public},
+        )
+
+    # ── Tiers ────────────────────────────────────────────────────
+
+    def tiers(self) -> list[dict]:
+        """List available storage tiers."""
+        data = self._client.get("/v1/storage/tiers")
+        return data if isinstance(data, list) else data.get("tiers", [])

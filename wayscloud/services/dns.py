@@ -96,3 +96,9 @@ class DNSService:
     def dnssec_deactivate(self, zone_name: str) -> dict:
         """Deactivate DNSSEC for a zone."""
         return self._client.delete(f"/v1/dns/zones/{zone_name}/dnssec")
+
+    # ── Statistics ────────────────────────────────────────────────
+
+    def statistics(self, zone_name: str) -> dict:
+        """Get zone statistics (query counts, record breakdown)."""
+        return self._client.get(f"/v1/dns/zones/{zone_name}/statistics")

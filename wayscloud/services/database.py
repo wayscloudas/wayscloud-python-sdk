@@ -59,17 +59,30 @@ class DatabaseService:
         data = self._client.get(f"/v1/databases/{db_type}/{name}/firewall")
         return data if isinstance(data, list) else data.get("rules", [])
 
-    def add_firewall_rule(self, db_type: str, name: str, source: str) -> dict:
-        """Add a firewall rule to allow access from a CIDR."""
+    def add_firewall_rule(self, db_type: str, name: str, ip_address: str, description: str = "") -> dict:
+        """Add a firewall rule to whitelist an IP address.
+
+        Args:
+            db_type: Database type (postgresql or mariadb).
+            name: Database name.
+            ip_address: IPv4 address to whitelist (e.g., '203.0.113.50').
+            description: Optional description.
+        """
+        body: dict = {"ip_address": ip_address}
+        if description:
+            body["description"] = description
         return self._client.post(
             f"/v1/databases/{db_type}/{name}/firewall",
-            json={"source": source},
+            json=body,
         )
 
     def remove_firewall_rule(self, db_type: str, name: str, rule_id: str) -> dict:
         """Remove a firewall rule."""
         return self._client.delete(f"/v1/databases/{db_type}/{name}/firewall/{rule_id}")
 
-    # credentials() removed — no public /v1/databases/.../credentials endpoint.
-    # Connection credentials are returned in create() response.
-    # tiers() removed — no public endpoint. Dashboard-only discovery.
+    # ── Tiers ──────────────────────────────────────────────────────
+
+    def tiers(self) -> list[dict]:
+        """List available database tiers (standard, encrypted)."""
+        data = self._client.get("/v1/databases/tiers")
+        return data if isinstance(data, list) else data.get("tiers", [])

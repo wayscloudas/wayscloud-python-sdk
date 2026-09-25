@@ -69,6 +69,30 @@ class VPSService:
         """Get real-time VPS status (power, CPU, memory)."""
         return self._client.get(f"/v1/vps/{vps_id}/status")
 
+    def update(
+        self,
+        vps_id: str,
+        display_name: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+        labels: Optional[dict[str, str]] = None,
+    ) -> dict:
+        """Update VPS metadata (display name, tags, labels)."""
+        body: dict = {}
+        if display_name is not None:
+            body["display_name"] = display_name
+        if tags is not None:
+            body["tags"] = tags
+        if labels is not None:
+            body["labels"] = labels
+        return self._client.patch(f"/v1/vps/{vps_id}", json=body)
+
+    def upgrade(self, vps_id: str, new_plan_code: str) -> dict:
+        """Upgrade VPS to a higher plan. Norway/Proxmox only."""
+        return self._client.post(
+            f"/v1/vps/{vps_id}/upgrade",
+            json={"new_plan_code": new_plan_code},
+        )
+
     # ── Plans & Discovery ────────────────────────────────────────
 
     def plans(self, region: Optional[str] = None) -> list[dict]:
@@ -88,6 +112,12 @@ class VPSService:
         """List available VPS regions."""
         data = self._client.get("/v1/vps/regions")
         return data if isinstance(data, list) else data.get("regions", [])
+
+    def addons(self, region: Optional[str] = None) -> list[dict]:
+        """List available VPS addons (extra disk, vCPU)."""
+        params = {"region": region} if region else None
+        data = self._client.get("/v1/vps/addons/", params=params)
+        return data if isinstance(data, list) else data.get("addons", [])
 
     # ── Snapshots ────────────────────────────────────────────────
 

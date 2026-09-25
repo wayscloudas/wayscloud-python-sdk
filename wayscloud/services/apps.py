@@ -102,3 +102,42 @@ class AppService:
     # domains(), add_domain(), remove_domain() removed.
     # No public /v1/apps/{id}/domains endpoint exists (404 verified).
     # Domain management is dashboard-only.
+
+    # ── GitHub auto-deploy ────────────────────────────────────────
+    # Dashboard-only endpoints. PAT auth is accepted by the
+    # get_authenticated_customer_or_internal dependency, so SDK/CLI
+    # callers can reach /v1/dashboard/apps/.../auto-deploy/github
+    # with the same PAT they already use for /v1/apps.
+
+    def auto_deploy_get(self, app_id: str) -> dict:
+        """Return GitHub auto-deploy config for the app (no secret)."""
+        return self._client.get(
+            f"/v1/dashboard/apps/{app_id}/auto-deploy/github"
+        )
+
+    def auto_deploy_configure(
+        self,
+        app_id: str,
+        repo_url: str,
+        branch: str = "main",
+        auto_deploy_enabled: bool = True,
+    ) -> dict:
+        """Configure/update GitHub auto-deploy.
+
+        The first call for an app returns the generated webhook_secret
+        in the response — surface it to the user exactly once.
+        """
+        return self._client.put(
+            f"/v1/dashboard/apps/{app_id}/auto-deploy/github",
+            json={
+                "repo_url": repo_url,
+                "branch": branch,
+                "auto_deploy_enabled": auto_deploy_enabled,
+            },
+        )
+
+    def auto_deploy_rotate_secret(self, app_id: str) -> dict:
+        """Rotate the per-app webhook secret. Returns the new one once."""
+        return self._client.post(
+            f"/v1/dashboard/apps/{app_id}/auto-deploy/github/rotate-secret"
+        )

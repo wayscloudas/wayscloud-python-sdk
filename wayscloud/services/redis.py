@@ -65,11 +65,17 @@ class RedisService:
         data = self._client.get(f"/v1/redis/instances/{instance_id}/firewall")
         return data if isinstance(data, list) else data.get("rules", [])
 
-    def add_firewall_rule(self, instance_id: str, source: str, description: str = "") -> dict:
-        """Add a firewall rule to allow access from a CIDR."""
+    def add_firewall_rule(self, instance_id: str, ip_address: str, description: str = "") -> dict:
+        """Add a firewall rule to allow access from a CIDR.
+
+        Args:
+            instance_id: Redis instance ID.
+            ip_address: IP address or CIDR (e.g., '192.0.2.100/32').
+            description: Optional description.
+        """
         return self._client.post(
             f"/v1/redis/instances/{instance_id}/firewall",
-            json={"source": source, "description": description},
+            json={"ip_address": ip_address, "description": description},
         )
 
     def remove_firewall_rule(self, instance_id: str, rule_id: str) -> dict:

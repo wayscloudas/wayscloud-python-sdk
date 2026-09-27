@@ -241,14 +241,19 @@ def test_iot_create_rule_uses_rule_type():
     assert "type" not in sig.parameters
 
 
-def test_version_matches_pyproject():
-    """One authoritative version: the wheel (pyproject) and the runtime must agree.
+def test_version_sources_agree():
+    """One authoritative version across every source the wheel and the tag read.
 
-    The publish workflow pins the tag suffix to both of these; this test catches
-    a mismatch before a tag can even be pushed (#release hygiene)."""
-    import tomllib
+    pyproject drives the wheel, setup.cfg is legacy metadata that went stale
+    once already, and the runtime reads _version. The publish workflow pins the
+    tag suffix to all three; this catches drift before a tag is pushed."""
+    import configparser
+    import re
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    data = tomllib.loads((root / "pyproject.toml").read_text())
-    assert data["project"]["version"] == __version__
+    project = re.search(r'(?m)^version = "([^"]+)"', (root / "pyproject.toml").read_text()).group(1)
+    cfg = configparser.ConfigParser()
+    cfg.read(root / "setup.cfg")
+    legacy = cfg["metadata"]["version"]
+    assert project == legacy == __version__

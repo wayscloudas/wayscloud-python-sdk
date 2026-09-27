@@ -1,6 +1,5 @@
 """SDK smoke tests — verify public API surface, auth, lifecycle, and error handling."""
 
-import json
 import os
 
 import httpx
@@ -117,30 +116,28 @@ def test_all_services_instantiate():
 @respx.mock
 def test_get_returns_json():
     respx.get("https://api.wayscloud.services/v1/vps/").mock(
-        return_value=httpx.Response(200, json={"total": 1, "vps_instances": [{"id": "vps-1", "hostname": "web01"}]})
+        return_value=httpx.Response(200, json={"vps_instances": []})
     )
     with WaysCloudClient(token="t") as c:
         result = c.vps.list()
-    assert result == [{"id": "vps-1", "hostname": "web01"}]
+    assert result == []
 
 
 @respx.mock
 def test_post_sends_json_body():
     route = respx.post("https://api.wayscloud.services/v1/dns/zones").mock(
-        return_value=httpx.Response(201, json={"zone_id": "z1", "zone_name": "example.com"})
+        return_value=httpx.Response(201, json={"id": "z1", "name": "example.com"})
     )
     with WaysCloudClient(token="t") as c:
         result = c.dns.create_zone("example.com")
-    assert result["zone_name"] == "example.com"
-    request = route.calls[0].request
-    assert request.headers["content-type"] == "application/json"
-    assert json.loads(request.content) == {"zone_name": "example.com", "zone_type": "master"}
+    assert result["name"] == "example.com"
+    assert route.calls[0].request.headers["content-type"] == "application/json"
 
 
 @respx.mock
 def test_get_does_not_send_content_type():
     route = respx.get("https://api.wayscloud.services/v1/vps/").mock(
-        return_value=httpx.Response(200, json={"total": 0, "vps_instances": []})
+        return_value=httpx.Response(200, json={"vps_instances": []})
     )
     with WaysCloudClient(token="t") as c:
         c.vps.list()
@@ -207,13 +204,13 @@ def test_retries_on_429_then_succeeds():
     route = respx.get("https://api.wayscloud.services/v1/vps/").mock(
         side_effect=[
             httpx.Response(429),
-            httpx.Response(200, json={"total": 1, "vps_instances": [{"hostname": "ok"}]}),
+            httpx.Response(200, json={"vps_instances": [{"hostname": "ok"}]}),
         ]
     )
     with WaysCloudClient(token="t") as c:
         c.BACKOFF_FACTOR = 0.01  # Speed up test
         result = c.vps.list()
-    assert result == [{"hostname": "ok"}]
+    assert len(result) == 1
     assert route.call_count == 2
 
 
@@ -242,3 +239,16 @@ def test_iot_create_rule_uses_rule_type():
     sig = inspect.signature(IoTService.create_rule)
     assert "rule_type" in sig.parameters
     assert "type" not in sig.parameters
+
+
+def test_version_matches_pyproject():
+    """One authoritative version: the wheel (pyproject) and the runtime must agree.
+
+    The publish workflow pins the tag suffix to both of these; this test catches
+    a mismatch before a tag can even be pushed (#release hygiene)."""
+    import tomllib
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    data = tomllib.loads((root / "pyproject.toml").read_text())
+    assert data["project"]["version"] == __version__

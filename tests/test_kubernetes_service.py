@@ -1,39 +1,13 @@
 """KubernetesService request shapes against a fake client (no HTTP)."""
-import importlib.util
 import os
 import sys
-import types
 import unittest
 
 HERE = os.path.dirname(__file__)
-SDK = os.path.join(HERE, "..")
+sys.path.insert(0, os.path.join(HERE, ".."))
 
-try:
-    # Normal case (repo root on sys.path or package installed): use the real
-    # package so later test modules can still import `wayscloud`.
-    from wayscloud.exceptions import NotFoundError
-    from wayscloud.services.kubernetes import KubernetesService
-except ImportError:
-    # Standalone fallback: load the service module without importing the
-    # package __init__ (which needs httpx).
-    pkg = types.ModuleType("wayscloud"); pkg.__path__ = [os.path.join(SDK, "wayscloud")]
-    sys.modules.setdefault("wayscloud", pkg)
-    exc_mod = types.ModuleType("wayscloud.exceptions")
-
-
-    class WaysCloudError(Exception):
-        pass
-
-
-    class NotFoundError(WaysCloudError):
-        pass
-
-
-    exc_mod.WaysCloudError, exc_mod.NotFoundError = WaysCloudError, NotFoundError
-    sys.modules["wayscloud.exceptions"] = exc_mod
-    spec = importlib.util.spec_from_file_location("wayscloud.services.kubernetes", os.path.join(SDK, "wayscloud", "services", "kubernetes.py"))
-    mod = importlib.util.module_from_spec(spec); sys.modules[spec.name] = mod; spec.loader.exec_module(mod)
-    KubernetesService = mod.KubernetesService
+from wayscloud.exceptions import NotFoundError
+from wayscloud.services.kubernetes import KubernetesService
 
 
 class FakeClient:
@@ -67,6 +41,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(kw["json"]["node_pools"][0]["count"], 2)
         self.assertEqual(kw["json"]["plan_code"], "k8s-cluster-dev")
         self.assertEqual(kw["json"]["ssh_key_ids"], [])
+        self.assertEqual(kw["json"]["version"], "1.35")
 
     def test_add_node_pool_sends_labels_taints_and_ssh_keys(self):
         c = FakeClient([{"id": "c1"}])
@@ -111,6 +86,61 @@ class ServiceTests(unittest.TestCase):
             def get(self, *a, **k):
                 raise NotFoundError("404")
         self.assertEqual(KubernetesService(Gone()).wait("c1", timeout=5, interval=0)["status"], "deleted")
+
+    def test_maintenance_window_payloads(self):
+        c = FakeClient([{"timezone": "Europe/Oslo"}, {"enabled": True}, {"enabled": False}])
+        svc = KubernetesService(c)
+        self.assertEqual(svc.get_maintenance_window("c1")["timezone"], "Europe/Oslo")
+        svc.set_maintenance_window("c1", timezone="Europe/Oslo", days=["SAT", "SUN"],
+                                   start="02:00", duration_minutes=120)
+        svc.delete_maintenance_window("c1")
+        self.assertEqual(c.calls[0][:2], ("GET", "/v1/kubernetes/clusters/c1/maintenance-window"))
+        self.assertEqual(c.calls[1][:2], ("PUT", "/v1/kubernetes/clusters/c1/maintenance-window"))
+        self.assertEqual(c.calls[1][2]["json"], {"enabled": True, "timezone": "Europe/Oslo",
+                                                 "days": ["SAT", "SUN"], "start": "02:00", "duration_minutes": 120})
+        self.assertEqual(c.calls[2][:2], ("DELETE", "/v1/kubernetes/clusters/c1/maintenance-window"))
+
+    def test_upgrade_node_pool_payload(self):
+        c = FakeClient([{"id": "c1"}])
+        KubernetesService(c).upgrade_node_pool("c1", "default")
+        self.assertEqual(c.calls[0][:2], ("POST", "/v1/kubernetes/clusters/c1/node-pools/default/upgrade"))
+
+    def test_upgrade_payload_modes_and_jobs(self):
+        c = FakeClient([{"job": {"id": "j1"}}, {"job": {"id": "j2"}}, {"jobs": [{"id": "j1"}]}, {"id": "j1"}, {"status": "cancelled"}])
+        svc = KubernetesService(c)
+        svc.upgrade("c1", "1.35", mode="next_maintenance_window", strategy="rolling-update", backup_before_upgrade=True)
+        svc.upgrade("c1", "1.35", mode="scheduled", scheduled_at="2026-10-03T02:30:00+02:00")
+        self.assertEqual(c.calls[0][2]["json"], {"version": "1.35", "mode": "next_maintenance_window",
+                                                 "strategy": "rolling-update", "backup_before_upgrade": True})
+        self.assertEqual(c.calls[1][2]["json"], {"version": "1.35", "mode": "scheduled",
+                                                 "scheduled_at": "2026-10-03T02:30:00+02:00",
+                                                 "strategy": "rolling-update", "backup_before_upgrade": False})
+        self.assertEqual(svc.upgrade_jobs("c1"), [{"id": "j1"}])
+        svc.upgrade_job("c1", "j1")
+        svc.cancel_upgrade_job("c1", "j1")
+        self.assertEqual(c.calls[2][:2], ("GET", "/v1/kubernetes/clusters/c1/upgrade-jobs"))
+        self.assertEqual(c.calls[3][:2], ("GET", "/v1/kubernetes/clusters/c1/upgrade-jobs/j1"))
+        self.assertEqual(c.calls[4][:2], ("DELETE", "/v1/kubernetes/clusters/c1/upgrade-jobs/j1"))
+
+    def test_upgrade_preflight_payload_and_shape(self):
+        response = {"ok": False, "cluster_version": "1.34", "target_version": "1.35",
+                    "errors": [{"code": "node_pool_not_ready", "message": "pool not ready"}],
+                    "warnings": [{"code": "no_recent_backup", "message": "old"}],
+                    "backup": {"latest_completed_at": None, "age_hours": None}}
+        c = FakeClient([response, response])
+        svc = KubernetesService(c)
+        out = svc.upgrade_preflight("c1", "1.35", mode="next_maintenance_window",
+                                    strategy="rolling-update", backup_before_upgrade=True)
+        svc.upgrade_preflight("c1", "1.35", mode="scheduled", scheduled_at="2026-10-03T02:30:00+02:00")
+        self.assertIs(out, response)
+        m, p, kw = c.calls[0]
+        self.assertEqual((m, p), ("POST", "/v1/kubernetes/clusters/c1/upgrade-preflight"))
+        self.assertEqual(kw["json"], {"version": "1.35", "mode": "next_maintenance_window",
+                                      "strategy": "rolling-update", "backup_before_upgrade": True})
+        self.assertEqual(c.calls[1][2]["json"]["scheduled_at"], "2026-10-03T02:30:00+02:00")
+        # errors/warnings pass through untouched — callers render them
+        self.assertEqual(out["errors"][0]["code"], "node_pool_not_ready")
+        self.assertEqual(out["warnings"][0]["code"], "no_recent_backup")
 
 
 if __name__ == "__main__":

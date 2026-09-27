@@ -3,6 +3,24 @@
 All notable changes to the `wayscloud` Python SDK. Version numbers match the
 PyPI releases.
 
+## 0.5.0 — 2026-09-27
+
+### Added
+
+- **Upgrade preflight** — `client.kubernetes.upgrade_preflight(cluster_id, version, ...)`:
+  the same input model as `upgrade()`; returns structured `errors` (blockers the
+  upgrade is refused on) and `warnings` (advisory, e.g. a stale backup), plus the
+  computed schedule and latest-backup facts. Read-only apart from the
+  server-side audit record.
+
+### Fixed
+
+- The test suite now passes in a single pytest session: the kubernetes loader no
+  longer leaves synthetic modules in `sys.modules`, and the HTTP mocks use the
+  current `/v1` endpoints.
+- A version-parity test pins `pyproject.toml`, `setup.cfg` (synced at last) and
+  `__version__`; the publish workflow additionally pins all three to the tag.
+
 ## 0.4.0 — 2026-09-25
 
 ### Added

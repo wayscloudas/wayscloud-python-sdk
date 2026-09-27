@@ -54,11 +54,12 @@ class KubernetesService:
         node_pools: list[dict],
         plan_code: str = "k8s-cluster-dev",
         region: str = "no",
-        version: str = "1.34",
+        version: str = "1.35",
         api_ip_filter: Optional[list[str]] = None,
         ssh_key_ids: Optional[list[str]] = None,
     ) -> dict:
-        """Create a cluster. ``node_pools``: ``[{"name": "default", "plan_code": "k8s-node-2c4g", "count": 2}]``."""
+        """Create a cluster. ``node_pools``: ``[{"name": "default", "plan_code": "k8s-node-2c4g", "count": 2}]``.
+        ``version`` defaults to the current default offered version (1.35; see :meth:`versions`)."""
         return self._client.post("/v1/kubernetes/clusters", json={
             "name": name, "region": region, "plan_code": plan_code, "version": version,
             "node_pools": node_pools, "api_ip_filter": api_ip_filter or [], "ssh_key_ids": ssh_key_ids or [],
@@ -105,6 +106,12 @@ class KubernetesService:
 
     def delete_node_pool(self, cluster_id: str, pool_name: str) -> dict:
         return self._client.delete(f"/v1/kubernetes/clusters/{cluster_id}/node-pools/{pool_name}")
+
+    def upgrade_node_pool(self, cluster_id: str, pool_name: str) -> dict:
+        """Converge a pool's nodes to the cluster's current Kubernetes version
+        (surge capacity, drain, recreate under the same name). Runs in the
+        background; poll the cluster until the pool status is running again."""
+        return self._client.post(f"/v1/kubernetes/clusters/{cluster_id}/node-pools/{pool_name}/upgrade")
 
     # -- access --------------------------------------------------------------
     def kubeconfig(self, cluster_id: str) -> str:
@@ -153,7 +160,66 @@ class KubernetesService:
         data = self._client.get(f"/v1/kubernetes/clusters/{cluster_id}/upgrade")
         return data.get("versions", []) if isinstance(data, dict) else data
 
-    def upgrade(self, cluster_id: str, version: str) -> dict:
-        """Upgrade the control plane to `version`. No backup is taken automatically; create
-        one first if the workload needs a restore point (the portal shows the same warning)."""
-        return self._client.post(f"/v1/kubernetes/clusters/{cluster_id}/upgrade", json={"version": version})
+    def upgrade(self, cluster_id: str, version: str, *, mode: str = "immediate", scheduled_at=None,
+                strategy: Optional[str] = "rolling-update", backup_before_upgrade: bool = False) -> dict:
+        """Request an upgrade.
+
+        ``mode``: immediate | next_maintenance_window | scheduled (``scheduled_at``
+        required, ISO-8601 with offset, inside a configured maintenance window).
+        ``strategy``: rolling-update (default since the #1176 qualification) or
+        manual; direct API calls that omit the field still mean manual. With
+        ``backup_before_upgrade`` the upgrade waits for a fresh backup first.
+        Immediate upgrades without a backup return the cluster record (historical
+        behaviour); all other requests return ``{"job": ..., "cluster": ...}``."""
+        body = {"version": version, "mode": mode, "backup_before_upgrade": backup_before_upgrade}
+        if scheduled_at is not None:
+            body["scheduled_at"] = scheduled_at.isoformat() if hasattr(scheduled_at, "isoformat") else scheduled_at
+        if strategy:
+            body["strategy"] = strategy
+        return self._client.post(f"/v1/kubernetes/clusters/{cluster_id}/upgrade", json=body)
+
+    def upgrade_preflight(self, cluster_id: str, version: str, *, mode: str = "immediate", scheduled_at=None,
+                          strategy: Optional[str] = "rolling-update",
+                          backup_before_upgrade: bool = False) -> dict:
+        """Run the pre-upgrade check and return the structured result.
+
+        Same input model as :meth:`upgrade`. The response carries ``errors``
+        (blockers — the upgrade is refused while any is present) and
+        ``warnings`` (advisory, the caller decides), plus facts such as the
+        latest completed backup age and the computed schedule occurrence. The
+        call is read-only apart from the server-side audit record."""
+        body = {"version": version, "mode": mode, "backup_before_upgrade": backup_before_upgrade}
+        if scheduled_at is not None:
+            body["scheduled_at"] = scheduled_at.isoformat() if hasattr(scheduled_at, "isoformat") else scheduled_at
+        if strategy:
+            body["strategy"] = strategy
+        return self._client.post(f"/v1/kubernetes/clusters/{cluster_id}/upgrade-preflight", json=body)
+
+    def upgrade_jobs(self, cluster_id: str) -> list[dict]:
+        """Upgrade requests for the cluster, newest first."""
+        data = self._client.get(f"/v1/kubernetes/clusters/{cluster_id}/upgrade-jobs")
+        return data.get("jobs", []) if isinstance(data, dict) else data
+
+    def upgrade_job(self, cluster_id: str, job_id: str) -> dict:
+        return self._client.get(f"/v1/kubernetes/clusters/{cluster_id}/upgrade-jobs/{job_id}")
+
+    def cancel_upgrade_job(self, cluster_id: str, job_id: str) -> dict:
+        """Cancel an upgrade that has not started yet (queued or preflight)."""
+        return self._client.delete(f"/v1/kubernetes/clusters/{cluster_id}/upgrade-jobs/{job_id}")
+
+    # -- maintenance window --------------------------------------------------
+    def get_maintenance_window(self, cluster_id: str) -> dict:
+        """The cluster's recurring upgrade window with the next occurrence computed."""
+        return self._client.get(f"/v1/kubernetes/clusters/{cluster_id}/maintenance-window")
+
+    def set_maintenance_window(self, cluster_id: str, *, timezone: str, days: list[str], start: str,
+                               duration_minutes: int, enabled: bool = True) -> dict:
+        """Create or replace the recurring window. ``days`` are MON..SUN (full names
+        accepted), ``start`` is HH:MM in ``timezone``, ``duration_minutes`` is 30–480."""
+        return self._client.put(f"/v1/kubernetes/clusters/{cluster_id}/maintenance-window",
+                                json={"enabled": enabled, "timezone": timezone, "days": days,
+                                      "start": start, "duration_minutes": duration_minutes})
+
+    def delete_maintenance_window(self, cluster_id: str) -> dict:
+        """Remove the recurring maintenance window."""
+        return self._client.delete(f"/v1/kubernetes/clusters/{cluster_id}/maintenance-window")
